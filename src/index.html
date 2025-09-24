@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>排班工具 - 鉅鋼機械</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft JhengHei', 'PingFang TC', 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 0;
+            margin-bottom: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            text-align: center;
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+        
+        .login-form {
+            max-width: 400px;
+            margin: 50px auto;
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .error-message {
+            background: #ffebee;
+            color: #c62828;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #c62828;
+        }
+        
+        .success-message {
+            background: #e8f5e8;
+            color: #2e7d32;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2e7d32;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .nav {
+            background: white;
+            padding: 15px 0;
+            margin-bottom: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .nav ul {
+            list-style: none;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .nav li {
+            margin: 0 15px;
+        }
+        
+        .nav a {
+            text-decoration: none;
+            color: #555;
+            padding: 10px 20px;
+            border-radius: 5px;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+        }
+        
+        .nav a:hover, .nav a.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .nav i {
+            margin-right: 8px;
+        }
+        
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .card h2 {
+            color: #333;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .card h2 i {
+            margin-right: 10px;
+            color: #667eea;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        /* 懸浮視窗樣式 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: slideIn 0.3s ease;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .modal-header h3 {
+            margin: 0;
+            color: #333;
+            display: flex;
+            align-items: center;
+        }
+        
+        .modal-header h3 i {
+            margin-right: 10px;
+            color: #667eea;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #999;
+            padding: 5px;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+        
+        .modal-close:hover {
+            background: #f5f5f5;
+            color: #333;
+        }
+        
+        .modal-content form {
+            padding: 20px;
+        }
+        
+        .position-info {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .position-info small {
+            color: #666;
+            font-size: 12px;
+        }
+        
+        .checkbox-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 10px;
+        }
+        
+        .position-section {
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            background: #fafafa;
+        }
+        
+        .position-section h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 14px;
+            font-weight: bold;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 5px;
+        }
+        
+        .position-section .checkbox-label {
+            margin-bottom: 8px;
+        }
+        
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            transition: all 0.3s;
+            background: #f9f9f9;
+        }
+        
+        .checkbox-label:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+        
+        .checkbox-label input[type="checkbox"] {
+            display: none;
+        }
+        
+        .checkmark {
+            width: 18px;
+            height: 18px;
+            border: 2px solid #ddd;
+            border-radius: 3px;
+            margin-right: 8px;
+            position: relative;
+            transition: all 0.3s;
+        }
+        
+        .checkbox-label input[type="checkbox"]:checked + .checkmark {
+            background: #667eea;
+            border-color: #667eea;
+        }
+        
+        .checkbox-label input[type="checkbox"]:checked + .checkmark::after {
+            content: '✓';
+            position: absolute;
+            top: -2px;
+            left: 2px;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        .employees-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        .employees-table th,
+        .employees-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        
+        .employees-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .employees-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        .employees-table tr:hover {
+            background-color: #f0f4ff;
+        }
+        
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideIn {
+            from { 
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to { 
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .nav ul {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .nav li {
+                margin: 5px 0;
+                width: 100%;
+                text-align: center;
+            }
+            
+            .nav a {
+                justify-content: center;
+            }
+            
+            .modal-content {
+                width: 95%;
+                margin: 10px;
+            }
+            
+            .checkbox-group {
+                grid-template-columns: 1fr;
+            }
+            
+            .position-section {
+                margin-bottom: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 登入頁面 -->
+        <div id="loginPage" class="container">
+            <div class="header">
+                <h1><i class="fas fa-calendar-alt"></i> 排班工具</h1>
+                <p>一處完成蒐集→編排→審核→發布→匯出</p>
+            </div>
+            
+            <div class="login-form">
+                <h2 style="text-align: center; margin-bottom: 30px; color: #333;">
+                    <i class="fas fa-sign-in-alt"></i> 登入系統
+                </h2>
+                
+                <div id="loginError" class="error-message hidden"></div>
+                <div id="loginSuccess" class="success-message hidden"></div>
+                
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label for="username">使用者名稱</label>
+                        <input type="text" id="username" name="username" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password">密碼</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
+                    
+                    <button type="submit" class="btn" id="loginBtn">
+                        <i class="fas fa-sign-in-alt"></i> 登入
+                    </button>
+                </form>
+                
+                <div style="text-align: center; margin-top: 20px; color: #666;">
+                    <p>預設管理員帳號：admin / admin123</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 主應用程式 -->
+        <div id="mainApp" class="hidden">
+            <div class="header">
+                <h1><i class="fas fa-calendar-alt"></i> 排班工具</h1>
+                <p>歡迎回來，<span id="userName"></span>！</p>
+            </div>
+            
+            <nav class="nav">
+                <ul>
+                    <li><a href="#" id="navDashboard" class="nav-link active" data-page="dashboard">
+                        <i class="fas fa-tachometer-alt"></i> 看板
+                    </a></li>
+                    <li><a href="#" id="navSchedule" class="nav-link" data-page="schedule">
+                        <i class="fas fa-calendar-week"></i> 排班
+                    </a></li>
+                    <li><a href="#" id="navEmployees" class="nav-link" data-page="employees">
+                        <i class="fas fa-users"></i> 員工管理
+                    </a></li>
+                    <li><a href="#" id="navApproval" class="nav-link" data-page="approval">
+                        <i class="fas fa-check-circle"></i> 審核
+                    </a></li>
+                    <li><a href="#" id="navExport" class="nav-link" data-page="export">
+                        <i class="fas fa-download"></i> 匯出
+                    </a></li>
+                    <li><a href="#" id="navLogout" class="nav-link">
+                        <i class="fas fa-sign-out-alt"></i> 登出
+                    </a></li>
+                </ul>
+            </nav>
+            
+            <div class="container">
+                <!-- 看板頁面 -->
+                <div id="dashboardPage" class="page">
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="stat-number" id="totalEmployees">0</div>
+                            <div class="stat-label">總員工數</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="pendingSchedules">0</div>
+                            <div class="stat-label">待審核排班</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="thisWeekHours">0</div>
+                            <div class="stat-label">本週總工時</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="overtimeAlerts">0</div>
+                            <div class="stat-label">加班警示</div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid">
+                        <div class="card">
+                            <h2><i class="fas fa-calendar-week"></i> 本週班表</h2>
+                            <div id="weeklySchedule">
+                                <p>載入中...</p>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <h2><i class="fas fa-exclamation-triangle"></i> 警示事項</h2>
+                            <div id="alerts">
+                                <p>載入中...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 排班頁面 -->
+                <div id="schedulePage" class="page hidden">
+                    <div class="card">
+                        <h2><i class="fas fa-calendar-week"></i> 排班管理</h2>
+                        <div id="scheduleContent">
+                            <p>排班功能開發中...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 員工管理頁面 -->
+                <div id="employeesPage" class="page hidden">
+                    <div class="card">
+                        <h2><i class="fas fa-users"></i> 員工管理</h2>
+                        <div id="employeesContent">
+                            <p>員工管理功能開發中...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 審核頁面 -->
+                <div id="approvalPage" class="page hidden">
+                    <div class="card">
+                        <h2><i class="fas fa-check-circle"></i> 審核管理</h2>
+                        <div id="approvalContent">
+                            <p>審核功能開發中...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 匯出頁面 -->
+                <div id="exportPage" class="page hidden">
+                    <div class="card">
+                        <h2><i class="fas fa-download"></i> 匯出功能</h2>
+                        <div id="exportContent">
+                            <p>匯出功能開發中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="bundle.js"></script>
+</body>
+</html>
