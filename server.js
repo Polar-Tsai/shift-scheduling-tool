@@ -181,16 +181,23 @@ function initializeDatabase() {
     )`
   ];
 
+  let completedTables = 0;
+  const totalTables = tables.length;
+
   tables.forEach(sql => {
     db.run(sql, (err) => {
       if (err) {
         console.error('建立表格錯誤:', err.message);
       }
+      completedTables++;
+      
+      // 當所有表格都建立完成後，才建立預設資料
+      if (completedTables === totalTables) {
+        console.log('所有資料庫表格建立完成');
+        createDefaultData();
+      }
     });
   });
-
-  // 建立預設資料
-  createDefaultData();
 }
 
 // 建立預設資料
@@ -214,6 +221,32 @@ function createDefaultData() {
       db.run(`INSERT INTO users (username, password, role, store_id) 
               VALUES ('admin', ?, 'admin', 1)`, [hashedPassword], (err) => {
         if (err) console.error('建立預設管理員錯誤:', err.message);
+      });
+
+      // 建立範例員工資料
+      const sampleEmployees = [
+        { name: '張三', type: 'fulltime', role_primary: 'cashier', skills: ['cashier', 'reception'], emp_no: 'EMP001' },
+        { name: '李四', type: 'fulltime', role_primary: 'server', skills: ['server', 'tea_service'], emp_no: 'EMP002' },
+        { name: '王五', type: 'pt', role_primary: 'kitchen', skills: ['kitchen', 'plating'], emp_no: 'EMP003' },
+        { name: '趙六', type: 'pt', role_primary: 'reception', skills: ['reception', 'plating', 'clearing'], emp_no: 'EMP004' },
+        { name: '錢七', type: 'fulltime', role_primary: 'control', skills: ['control', 'server'], emp_no: 'EMP005' },
+        { name: '小蛋', type: 'pt', role_primary: 'beverage', skills: ['beverage', 'runner'], emp_no: 'EMP006' }
+      ];
+
+      sampleEmployees.forEach((emp, index) => {
+        setTimeout(() => {
+          db.run(`INSERT INTO employees (name, type, role_primary, skills, store_id, emp_no) 
+                  VALUES (?, ?, ?, ?, ?, ?)`,
+            [emp.name, emp.type, emp.role_primary, JSON.stringify(emp.skills), 1, emp.emp_no],
+            (err) => {
+              if (err) {
+                console.error(`建立員工 ${emp.name} 錯誤:`, err.message);
+              } else {
+                console.log(`已建立員工: ${emp.name}`);
+              }
+            }
+          );
+        }, index * 100); // 延遲執行避免同時插入
       });
     }
   });
@@ -327,17 +360,29 @@ app.put('/api/employees/:id', authenticateToken, requireRole(['admin', 'editor']
   const employeeId = req.params.id;
   const { name, type, role_primary, skills, emp_no } = req.body;
   
+  console.log('更新員工請求:', {
+    employeeId,
+    name,
+    type,
+    role_primary,
+    skills,
+    emp_no
+  });
+  
   db.run(`UPDATE employees 
           SET name = ?, type = ?, role_primary = ?, skills = ?, emp_no = ?
           WHERE id = ?`,
     [name, type, role_primary, JSON.stringify(skills || []), emp_no, employeeId],
     function(err) {
       if (err) {
-        return res.status(500).json({ error: '更新員工失敗' });
+        console.error('更新員工資料庫錯誤:', err.message);
+        console.error('SQL 錯誤詳情:', err);
+        return res.status(500).json({ error: '更新員工失敗: ' + err.message });
       }
       if (this.changes === 0) {
         return res.status(404).json({ error: '找不到該員工' });
       }
+      console.log('員工更新成功，影響行數:', this.changes);
       res.json({ message: '員工更新成功' });
     }
   );
