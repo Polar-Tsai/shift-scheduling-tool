@@ -497,32 +497,30 @@ class SchedulingApp {
 
     async createNewSchedule() {
         try {
-            const stores = await api.getStores();
             const currentWeek = this.getCurrentWeek();
-            
-            const storeSelect = stores.map(store => 
-                `<option value="${store.id}">${store.name}</option>`
-            ).join('');
 
             const modal = document.createElement('div');
-            modal.className = 'modal';
+            modal.className = 'modal-overlay';
             modal.innerHTML = `
                 <div class="modal-content">
-                    <h3>建立新排班</h3>
+                    <div class="modal-header">
+                        <h3><i class="fas fa-calendar-plus"></i> 建立新排班</h3>
+                        <button type="button" class="modal-close" onclick="this.closest('.modal-overlay').remove()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
                     <form id="newScheduleForm">
-                        <div class="form-group">
-                            <label for="storeSelect">選擇店鋪</label>
-                            <select id="storeSelect" required>
-                                ${storeSelect}
-                            </select>
-                        </div>
                         <div class="form-group">
                             <label for="weekStart">週開始日期</label>
                             <input type="date" id="weekStart" value="${currentWeek}" required>
                         </div>
                         <div class="form-actions">
-                            <button type="button" class="btn btn-secondary" onclick="this.closest('.modal').remove()">取消</button>
-                            <button type="submit" class="btn">建立</button>
+                            <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">
+                                <i class="fas fa-times"></i> 取消
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-plus"></i> 建立
+                            </button>
                         </div>
                     </form>
                 </div>
@@ -530,23 +528,29 @@ class SchedulingApp {
 
             document.body.appendChild(modal);
 
+            // 點擊背景關閉視窗
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+
             document.getElementById('newScheduleForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const storeId = document.getElementById('storeSelect').value;
                 const weekStart = document.getElementById('weekStart').value;
 
                 try {
-                    await api.createSchedule({ store_id: storeId, week_start: weekStart });
+                    await api.createSchedule({ store_id: 1, week_start: weekStart }); // 使用預設店鋪 ID
                     modal.remove();
                     this.loadExistingSchedules();
-                    utils.showSuccess('scheduleSuccess', '排班建立成功！');
+                    this.showSuccessMessage('排班建立成功！');
                 } catch (error) {
-                    utils.showError('scheduleError', error.message);
+                    this.showErrorMessage('排班建立失敗：' + error.message);
                 }
             });
 
         } catch (error) {
-            utils.showError('scheduleError', '載入店鋪資料失敗');
+            this.showErrorMessage('建立排班失敗：' + error.message);
         }
     }
 
