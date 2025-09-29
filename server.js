@@ -343,13 +343,50 @@ app.get('/api/employees', authenticateToken, (req, res) => {
 app.post('/api/employees', authenticateToken, requireRole(['admin', 'editor']), (req, res) => {
   const { name, type, role_primary, skills, store_id, emp_no } = req.body;
   
+  console.log('建立員工請求:', {
+    name,
+    type,
+    role_primary,
+    skills,
+    store_id,
+    emp_no
+  });
+  
+  // 驗證必填欄位
+  if (!name || !type || !role_primary) {
+    console.error('必填欄位缺失:', { name, type, role_primary });
+    return res.status(400).json({ error: '姓名、類型和主要職位為必填欄位' });
+  }
+  
+  // 驗證類型值
+  if (!['fulltime', 'pt'].includes(type)) {
+    console.error('無效的員工類型:', type);
+    return res.status(400).json({ error: '員工類型必須為 fulltime 或 pt' });
+  }
+  
+  // 驗證主要職位值
+  const validRoles = ['cashier', 'reception', 'runner', 'tea_service', 'control', 'plating', 'clearing', 'beverage'];
+  if (!validRoles.includes(role_primary)) {
+    console.error('無效的主要職位:', role_primary);
+    return res.status(400).json({ error: '主要職位無效' });
+  }
+  
   db.run(`INSERT INTO employees (name, type, role_primary, skills, store_id, emp_no) 
           VALUES (?, ?, ?, ?, ?, ?)`,
     [name, type, role_primary, JSON.stringify(skills || []), store_id, emp_no],
     function(err) {
       if (err) {
-        return res.status(500).json({ error: '建立員工失敗' });
+        console.error('建立員工資料庫錯誤:', err.message);
+        console.error('SQL 錯誤詳情:', err);
+        
+        // 檢查是否為唯一約束錯誤
+        if (err.message.includes('UNIQUE constraint failed')) {
+          return res.status(400).json({ error: '員工編號已存在，請使用其他編號' });
+        }
+        
+        return res.status(500).json({ error: '建立員工失敗: ' + err.message });
       }
+      console.log('員工建立成功，ID:', this.lastID);
       res.json({ id: this.lastID, message: '員工建立成功' });
     }
   );
@@ -435,11 +472,221 @@ app.post('/api/schedules', authenticateToken, requireRole(['admin', 'editor']), 
 app.post('/api/schedules/:id/autoplan', authenticateToken, requireRole(['admin', 'editor']), (req, res) => {
   const scheduleId = req.params.id;
   
-  // 這裡實作自動排班邏輯
-  // 暫時回傳成功訊息
-  res.json({ 
-    scheduleId: parseInt(scheduleId), 
-    warnings: ['部分員工工時超過標準', '週末班次需要調整'] 
+  // 取得排班表資訊
+  db.get('SELECT * FROM schedules WHERE id = ?', [scheduleId], (err, schedule) => {
+    if (err) {
+      return res.status(500).json({ error: '取得排班表失敗' });
+    }
+    
+    if (!schedule) {
+      return res.status(404).json({ error: '找不到排班表' });
+    }
+    
+    // 取得該店鋪的員工
+    db.all('SELECT * FROM employees WHERE store_id = ?', [schedule.store_id], (err, employees) => {
+      if (err) {
+        return res.status(500).json({ error: '取得員工資料失敗' });
+      }
+      
+      // 計算週開始日期
+      const weekStart = new Date(schedule.week_start);
+      const weekDays = [];
+      
+      // 生成一週的日期（週一到週日）
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(weekStart);
+        date.setDate(weekStart.getDate() + i);
+        weekDays.push(date.toISOString().split('T')[0]);
+      }
+      
+      // 崗位配置需求
+      const roleRequirements = {
+        'cashier': { min: 1, max: 2, priority: 1 },      // 收銀
+        'reception': { min: 1, max: 1, priority: 2 },     // 接待
+        'tea_service': { min: 1, max: 2, priority: 3 },   // 茶水
+        'runner': { min: 1, max: 2, priority: 4 },        // 走餐
+        'plating': { min: 1, max: 2, priority: 5 },       // 出餐
+        'clearing': { min: 1, max: 2, priority: 6 },      // 撤餐
+        'beverage': { min: 1, max: 1, priority: 7 },      // 酒水
+        'control': { min: 1, max: 1, priority: 8 }        // 控場
+      };
+      
+      const shifts = [];
+      const assignments = [];
+      
+      // 為每一天的每個班次建立排班
+      weekDays.forEach((date, dayIndex) => {
+        ['AM', 'PM'].forEach(slot => {
+          // 建立班次記錄 - 使用數字 ID
+          const shiftId = parseInt(scheduleId) * 1000 + dayIndex * 2 + (slot === 'AM' ? 0 : 1);
+          
+          // 隨機選擇員工進行排班
+          const availableEmployees = employees.filter(emp => {
+            const skills = JSON.parse(emp.skills || '[]');
+            return skills.length > 0;
+          });
+          
+          // 按崗位優先級分配員工
+          const assignedRoles = new Set();
+          const shiftAssignments = [];
+          
+          Object.entries(roleRequirements).forEach(([role, req]) => {
+            if (assignedRoles.has(role)) return;
+            
+            // 找到適合此崗位的員工
+            const suitableEmployees = availableEmployees.filter(emp => {
+              const skills = JSON.parse(emp.skills || '[]');
+              return skills.includes(role) && !shiftAssignments.some(a => a.employee_id === emp.id);
+            });
+            
+            if (suitableEmployees.length > 0) {
+              // 隨機選擇一個員工
+              const selectedEmployee = suitableEmployees[Math.floor(Math.random() * suitableEmployees.length)];
+              
+              // 決定工作時間
+              const startTime = slot === 'AM' ? '09:00' : '17:00';
+              const endTime = slot === 'AM' ? '17:00' : '01:00';
+              
+              shiftAssignments.push({
+                shift_id: shiftId,
+                employee_id: selectedEmployee.id,
+                role: role,
+                start_time: startTime,
+                end_time: endTime,
+                break_minutes: 120,
+                regular_hours: slot === 'AM' ? 8 : 8,
+                overtime_hours: 0,
+                consec_days: 1,
+                locked: false,
+                notes: `自動排班 - ${role}`
+              });
+              
+              assignedRoles.add(role);
+            }
+          });
+          
+          // 插入班次記錄
+          shifts.push({
+            id: shiftId,
+            store_id: schedule.store_id,
+            date: date,
+            slot: slot,
+            min_cashier: 1,
+            min_server: 1,
+            min_kitchen: 1,
+            min_support: 1
+          });
+          
+          // 插入排班指派
+          assignments.push(...shiftAssignments);
+        });
+      });
+      
+      // 先清除現有的排班資料
+      db.run('DELETE FROM assignments WHERE shift_id IN (SELECT id FROM shifts WHERE store_id = ?)', [schedule.store_id], (err) => {
+        if (err) {
+          console.error('清除現有排班失敗:', err);
+        }
+        
+        db.run('DELETE FROM shifts WHERE store_id = ?', [schedule.store_id], (err) => {
+          if (err) {
+            console.error('清除現有班次失敗:', err);
+          }
+          
+          // 插入新的班次資料
+          const shiftInsert = 'INSERT INTO shifts (id, store_id, date, slot, min_cashier, min_server, min_kitchen, min_support) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+          let completedShifts = 0;
+          
+          shifts.forEach(shift => {
+            db.run(shiftInsert, [
+              shift.id, shift.store_id, shift.date, shift.slot,
+              shift.min_cashier, shift.min_server, shift.min_kitchen, shift.min_support
+            ], (err) => {
+              if (err) {
+                console.error('插入班次失敗:', err);
+              }
+              
+              completedShifts++;
+              if (completedShifts === shifts.length) {
+                // 插入排班指派
+                const assignmentInsert = 'INSERT INTO assignments (shift_id, employee_id, role, start_time, end_time, break_minutes, regular_hours, overtime_hours, consec_days, locked, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                let completedAssignments = 0;
+                
+                assignments.forEach(assignment => {
+                  db.run(assignmentInsert, [
+                    assignment.shift_id, assignment.employee_id, assignment.role,
+                    assignment.start_time, assignment.end_time, assignment.break_minutes,
+                    assignment.regular_hours, assignment.overtime_hours, assignment.consec_days,
+                    assignment.locked ? 1 : 0, assignment.notes
+                  ], (err) => {
+                    if (err) {
+                      console.error('插入排班指派失敗:', err);
+                    }
+                    
+                    completedAssignments++;
+                    if (completedAssignments === assignments.length) {
+                      res.json({ 
+                        scheduleId: parseInt(scheduleId),
+                        message: '自動排班完成',
+                        shiftsCreated: shifts.length,
+                        assignmentsCreated: assignments.length,
+                        warnings: ['排班已自動生成，請檢查並調整'] 
+                      });
+                    }
+                  });
+                });
+              }
+            });
+          });
+        });
+      });
+    });
+  });
+});
+
+// 取得排班細節
+app.get('/api/schedules/:id/details', authenticateToken, (req, res) => {
+  const scheduleId = req.params.id;
+  
+  const query = `
+    SELECT 
+      sh.date,
+      sh.slot,
+      sh.id as shift_id,
+      GROUP_CONCAT(
+        e.name || '|' || a.role || '|' || e.emp_no, 
+        '||'
+      ) as assignments
+    FROM shifts sh
+    LEFT JOIN assignments a ON sh.id = a.shift_id
+    LEFT JOIN employees e ON a.employee_id = e.id
+    WHERE sh.store_id = (SELECT store_id FROM schedules WHERE id = ?)
+    GROUP BY sh.id, sh.date, sh.slot
+    ORDER BY sh.date, sh.slot
+  `;
+  
+  db.all(query, [scheduleId], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: '取得排班細節失敗' });
+    }
+    
+    // 處理資料格式
+    const processedRows = rows.map(row => {
+      const assignments = row.assignments ? 
+        row.assignments.split('||').filter(a => a).map(assignment => {
+          const [name, role, empNo] = assignment.split('|');
+          return { employee_name: name, role_primary: role, emp_no: empNo };
+        }) : [];
+      
+      return {
+        date: row.date,
+        slot: row.slot,
+        shift_id: row.shift_id,
+        assignments: assignments
+      };
+    });
+    
+    res.json(processedRows);
   });
 });
 

@@ -24,6 +24,21 @@ class API {
 
         try {
             const response = await fetch(url, config);
+            
+            // 檢查回應是否為 JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                if (response.status === 401) {
+                    // 認證失敗，清除 token 並重導向到登入頁面
+                    localStorage.removeItem('authToken');
+                    authToken = null;
+                    currentUser = null;
+                    window.location.reload();
+                    throw new Error('認證已過期，請重新登入');
+                }
+                throw new Error('伺服器回應格式錯誤');
+            }
+            
             const data = await response.json();
 
             if (!response.ok) {
@@ -96,6 +111,11 @@ class API {
         return this.request(`/schedules/${scheduleId}/autoplan`, {
             method: 'POST'
         });
+    }
+
+    // 取得排班細節
+    async getScheduleDetails(scheduleId) {
+        return this.request(`/schedules/${scheduleId}/details`);
     }
 
     // 提交審核
@@ -381,7 +401,7 @@ class SchedulingApp {
         const schedule = thisWeekSchedules[0];
         container.innerHTML = `
             <div class="schedule-info">
-                <h3>${schedule.store_name} - 第 ${this.getWeekNumber(schedule.week_start)} 週</h3>
+                <h3>第 ${this.getWeekNumber(schedule.week_start)} 週</h3>
                 <p>狀態: <span class="status-${schedule.status}">${this.getStatusText(schedule.status)}</span></p>
                 <p>建立者: ${schedule.created_by_name}</p>
                 <p>建立時間: ${utils.formatDate(schedule.created_at)}</p>
@@ -565,11 +585,25 @@ class SchedulingApp {
             }
 
             container.innerHTML = schedules.map(schedule => `
-                <div class="schedule-item">
-                    <h4>${schedule.store_name} - 第 ${this.getWeekNumber(schedule.week_start)} 週</h4>
-                    <p>狀態: <span class="status-${schedule.status}">${this.getStatusText(schedule.status)}</span></p>
-                    <p>建立者: ${schedule.created_by_name}</p>
-                    <p>建立時間: ${utils.formatDate(schedule.created_at)}</p>
+                <div class="schedule-item" data-schedule-id="${schedule.id}">
+                    <div class="schedule-header" onclick="app.toggleScheduleDetails(${schedule.id})">
+                        <h4>第 ${this.getWeekNumber(schedule.week_start)} 週</h4>
+                        <div class="schedule-info">
+                            <p>狀態: <span class="status-${schedule.status}">${this.getStatusText(schedule.status)}</span></p>
+                            <p>建立者: ${schedule.created_by_name}</p>
+                            <p>建立時間: ${utils.formatDate(schedule.created_at)}</p>
+                        </div>
+                        <div class="expand-icon">
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                    </div>
+                    <div class="schedule-details" id="details-${schedule.id}" style="display: none;">
+                        <div class="schedule-content">
+                            <div id="schedule-content-${schedule.id}">
+                                <p>載入排班細節中...</p>
+                            </div>
+                        </div>
+                    </div>
                     <div class="schedule-actions">
                         ${this.getScheduleActions(schedule)}
                     </div>
@@ -605,6 +639,124 @@ class SchedulingApp {
         }
         
         return actions.join(' ');
+    }
+
+    async toggleScheduleDetails(scheduleId) {
+        const detailsElement = document.getElementById(`details-${scheduleId}`);
+        const expandIcon = document.querySelector(`[data-schedule-id="${scheduleId}"] .expand-icon i`);
+        
+        if (detailsElement.style.display === 'none') {
+            // 展開
+            detailsElement.style.display = 'block';
+            expandIcon.className = 'fas fa-chevron-up';
+            
+            // 載入排班細節
+            await this.loadScheduleDetails(scheduleId);
+        } else {
+            // 收合
+            detailsElement.style.display = 'none';
+            expandIcon.className = 'fas fa-chevron-down';
+        }
+    }
+
+    async loadScheduleDetails(scheduleId) {
+        try {
+            const container = document.getElementById(`schedule-content-${scheduleId}`);
+            
+            // 載入排班細節資料
+            const scheduleDetails = await api.getScheduleDetails(scheduleId);
+            
+            if (!scheduleDetails || scheduleDetails.length === 0) {
+                container.innerHTML = '<p>此排班尚無詳細資料</p>';
+                return;
+            }
+
+            // 按日期分組
+            const scheduleByDate = {};
+            scheduleDetails.forEach(detail => {
+                if (!scheduleByDate[detail.date]) {
+                    scheduleByDate[detail.date] = { AM: [], PM: [] };
+                }
+                scheduleByDate[detail.date][detail.slot] = detail;
+            });
+
+            // 崗位中文對照表
+            const roleChineseMap = {
+                'cashier': '收銀',
+                'reception': '接待',
+                'runner': '走餐',
+                'tea_service': '茶水',
+                'control': '控場',
+                'plating': '出餐',
+                'clearing': '撤餐',
+                'beverage': '酒水'
+            };
+
+            // 生成排班表格
+            const days = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
+            
+            let tableHTML = `
+                <div class="schedule-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>上午班</th>
+                                <th>下午班</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            // 按週一到週日順序顯示
+            const sortedDates = Object.keys(scheduleByDate).sort();
+            sortedDates.forEach((date, index) => {
+                const dayName = days[index] || `第${index + 1}天`;
+                const amData = scheduleByDate[date].AM;
+                const pmData = scheduleByDate[date].PM;
+                
+                tableHTML += `
+                    <tr>
+                        <td>${dayName}<br><small>${date}</small></td>
+                        <td>
+                            ${amData && amData.assignments ? 
+                                amData.assignments.map(assignment => 
+                                    `<div class="assignment-item">
+                                        <strong>${assignment.employee_name}</strong><br>
+                                        <small>${roleChineseMap[assignment.role_primary] || assignment.role_primary}</small>
+                                    </div>`
+                                ).join('') : 
+                                '<span class="no-assignment">未排班</span>'
+                            }
+                        </td>
+                        <td>
+                            ${pmData && pmData.assignments ? 
+                                pmData.assignments.map(assignment => 
+                                    `<div class="assignment-item">
+                                        <strong>${assignment.employee_name}</strong><br>
+                                        <small>${roleChineseMap[assignment.role_primary] || assignment.role_primary}</small>
+                                    </div>`
+                                ).join('') : 
+                                '<span class="no-assignment">未排班</span>'
+                            }
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tableHTML += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            container.innerHTML = tableHTML;
+
+        } catch (error) {
+            console.error('載入排班細節錯誤:', error);
+            document.getElementById(`schedule-content-${scheduleId}`).innerHTML = 
+                '<p>載入排班細節失敗：' + error.message + '</p>';
+        }
     }
 
     async loadEmployees() {
@@ -1111,7 +1263,7 @@ class SchedulingApp {
 
         container.innerHTML = schedules.map(schedule => `
             <div class="approval-item">
-                <h4>${schedule.store_name} - 第 ${this.getWeekNumber(schedule.week_start)} 週</h4>
+                <h4>第 ${this.getWeekNumber(schedule.week_start)} 週</h4>
                 <p>狀態: ${this.getStatusText(schedule.status)}</p>
                 <p>提交時間: ${utils.formatDate(schedule.created_at)}</p>
                 ${schedule.sla_deadline_at ? `<p>審核期限: ${utils.formatDate(schedule.sla_deadline_at)}</p>` : ''}
@@ -1163,7 +1315,7 @@ class SchedulingApp {
             }
 
             const scheduleSelect = publishedSchedules.map(schedule => 
-                `<option value="${schedule.id}">${schedule.store_name} - 第 ${this.getWeekNumber(schedule.week_start)} 週</option>`
+                `<option value="${schedule.id}">第 ${this.getWeekNumber(schedule.week_start)} 週</option>`
             ).join('');
 
             const modal = document.createElement('div');
