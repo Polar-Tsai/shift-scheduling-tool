@@ -872,6 +872,15 @@ class SchedulingApp {
                             <option value="pt">PT</option>
                         </select>
                     </div>
+                    <div class="form-group" id="ptShiftGroup" style="display:none;">
+                        <label for="ptShiftType">PT 班別 *</label>
+                        <select id="ptShiftType">
+                            <option value="">請選擇 PT 班別</option>
+                            <option value="weekday_pm">平日晚班（18:00 ~ 22:00）</option>
+                            <option value="weekend_pm">假日晚班（18:00 ~ 22:00）</option>
+                            <option value="full_day">全日班（同正職工時）</option>
+                        </select>
+                    </div>
                     <div class="form-group">
                         <label for="empNo">員工編號</label>
                         <input type="text" id="empNo" placeholder="請輸入員工編號">
@@ -957,6 +966,23 @@ class SchedulingApp {
             }
         });
 
+        const empTypeEl = document.getElementById('empType');
+        const ptShiftGroup = document.getElementById('ptShiftGroup');
+        const ptShiftTypeEl = document.getElementById('ptShiftType');
+
+        const togglePtShiftGroup = () => {
+            if (empTypeEl.value === 'pt') {
+                ptShiftGroup.style.display = 'block';
+                ptShiftTypeEl.required = true;
+            } else {
+                ptShiftGroup.style.display = 'none';
+                ptShiftTypeEl.required = false;
+                ptShiftTypeEl.value = '';
+            }
+        };
+        empTypeEl.addEventListener('change', togglePtShiftGroup);
+        togglePtShiftGroup();
+
         document.getElementById('addEmployeeForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
@@ -975,7 +1001,8 @@ class SchedulingApp {
                 role_primary: selectedSkills[0], // 第一個選中的作為主要職位
                 skills: selectedSkills,
                 emp_no: document.getElementById('empNo').value,
-                store_id: currentUser.store_id
+                store_id: currentUser.store_id,
+                pt_shift_type: empTypeEl.value === 'pt' ? ptShiftTypeEl.value : null
             };
 
             try {
@@ -1022,6 +1049,15 @@ class SchedulingApp {
                                 <option value="pt" ${employee.type === 'pt' ? 'selected' : ''}>PT</option>
                             </select>
                         </div>
+                        <div class="form-group" id="editPtShiftGroup" style="display:none;">
+                            <label for="editPtShiftType">PT 班別 *</label>
+                            <select id="editPtShiftType">
+                                <option value="">請選擇 PT 班別</option>
+                                <option value="weekday_pm" ${employee.pt_shift_type === 'weekday_pm' ? 'selected' : ''}>平日晚班（18:00 ~ 22:00）</option>
+                                <option value="weekend_pm" ${employee.pt_shift_type === 'weekend_pm' ? 'selected' : ''}>假日晚班（18:00 ~ 22:00）</option>
+                                <option value="full_day" ${employee.pt_shift_type === 'full_day' ? 'selected' : ''}>全日班（同正職工時）</option>
+                            </select>
+                        </div>
                         <div class="form-group">
                             <label for="editEmpNo">員工編號</label>
                             <input type="text" id="editEmpNo" value="${employee.emp_no || ''}" placeholder="請輸入員工編號">
@@ -1053,6 +1089,29 @@ class SchedulingApp {
                 }
             });
 
+            // 編輯表單：PT 班別顯示/隱藏與預設值
+            const editEmpTypeEl = document.getElementById('editEmpType');
+            const editPtShiftGroup = document.getElementById('editPtShiftGroup');
+            const editPtShiftTypeEl = document.getElementById('editPtShiftType');
+
+            // 預設帶入員工原有 PT 班別
+            if (employee.pt_shift_type) {
+                editPtShiftTypeEl.value = employee.pt_shift_type;
+            }
+
+            const toggleEditPtShiftGroup = () => {
+                if (editEmpTypeEl.value === 'pt') {
+                    editPtShiftGroup.style.display = 'block';
+                    editPtShiftTypeEl.required = true;
+                } else {
+                    editPtShiftGroup.style.display = 'none';
+                    editPtShiftTypeEl.required = false;
+                    editPtShiftTypeEl.value = '';
+                }
+            };
+            editEmpTypeEl.addEventListener('change', toggleEditPtShiftGroup);
+            toggleEditPtShiftGroup();
+
             document.getElementById('editEmployeeForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 
@@ -1070,7 +1129,8 @@ class SchedulingApp {
                     type: document.getElementById('editEmpType').value,
                     role_primary: selectedSkills[0], // 第一個選中的作為主要職位
                     skills: selectedSkills,
-                    emp_no: document.getElementById('editEmpNo').value
+                    emp_no: document.getElementById('editEmpNo').value,
+                    pt_shift_type: document.getElementById('editEmpType').value === 'pt' ? document.getElementById('editPtShiftType').value : null
                 };
 
                 try {

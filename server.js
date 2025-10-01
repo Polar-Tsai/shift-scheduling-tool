@@ -60,6 +60,7 @@ function initializeDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       type TEXT CHECK(type IN ('fulltime', 'pt')) NOT NULL,
+      pt_shift_type TEXT CHECK(pt_shift_type IN ('weekday_pm', 'weekend_pm', 'full_day')),
       role_primary TEXT CHECK(role_primary IN ('cashier', 'reception', 'runner', 'tea_service', 'control', 'plating', 'clearing', 'beverage')) NOT NULL,
       skills TEXT, -- JSON 陣列
       store_id INTEGER,
@@ -341,7 +342,7 @@ app.get('/api/employees', authenticateToken, (req, res) => {
 
 // 建立員工
 app.post('/api/employees', authenticateToken, requireRole(['admin', 'editor']), (req, res) => {
-  const { name, type, role_primary, skills, store_id, emp_no } = req.body;
+  const { name, type, role_primary, skills, store_id, emp_no, pt_shift_type } = req.body;
   
   console.log('建立員工請求:', {
     name,
@@ -349,7 +350,8 @@ app.post('/api/employees', authenticateToken, requireRole(['admin', 'editor']), 
     role_primary,
     skills,
     store_id,
-    emp_no
+    emp_no,
+    pt_shift_type
   });
   
   // 驗證必填欄位
@@ -364,6 +366,16 @@ app.post('/api/employees', authenticateToken, requireRole(['admin', 'editor']), 
     return res.status(400).json({ error: '員工類型必須為 fulltime 或 pt' });
   }
   
+  // 驗證 PT 員工必須選擇班別
+  if (type === 'pt' && !pt_shift_type) {
+    return res.status(400).json({ error: 'PT 員工必須選擇班別' });
+  }
+  
+  // 驗證 PT 班別值
+  if (pt_shift_type && !['weekday_pm', 'weekend_pm', 'full_day'].includes(pt_shift_type)) {
+    return res.status(400).json({ error: 'PT 班別無效' });
+  }
+  
   // 驗證主要職位值
   const validRoles = ['cashier', 'reception', 'runner', 'tea_service', 'control', 'plating', 'clearing', 'beverage'];
   if (!validRoles.includes(role_primary)) {
@@ -371,9 +383,9 @@ app.post('/api/employees', authenticateToken, requireRole(['admin', 'editor']), 
     return res.status(400).json({ error: '主要職位無效' });
   }
   
-  db.run(`INSERT INTO employees (name, type, role_primary, skills, store_id, emp_no) 
-          VALUES (?, ?, ?, ?, ?, ?)`,
-    [name, type, role_primary, JSON.stringify(skills || []), store_id, emp_no],
+  db.run(`INSERT INTO employees (name, type, pt_shift_type, role_primary, skills, store_id, emp_no) 
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [name, type, pt_shift_type, role_primary, JSON.stringify(skills || []), store_id, emp_no],
     function(err) {
       if (err) {
         console.error('建立員工資料庫錯誤:', err.message);
@@ -395,7 +407,7 @@ app.post('/api/employees', authenticateToken, requireRole(['admin', 'editor']), 
 // 更新員工
 app.put('/api/employees/:id', authenticateToken, requireRole(['admin', 'editor']), (req, res) => {
   const employeeId = req.params.id;
-  const { name, type, role_primary, skills, emp_no } = req.body;
+  const { name, type, role_primary, skills, emp_no, pt_shift_type } = req.body;
   
   console.log('更新員工請求:', {
     employeeId,
@@ -403,13 +415,24 @@ app.put('/api/employees/:id', authenticateToken, requireRole(['admin', 'editor']
     type,
     role_primary,
     skills,
-    emp_no
+    emp_no,
+    pt_shift_type
   });
   
+  // 驗證 PT 員工必須選擇班別
+  if (type === 'pt' && !pt_shift_type) {
+    return res.status(400).json({ error: 'PT 員工必須選擇班別' });
+  }
+  
+  // 驗證 PT 班別值
+  if (pt_shift_type && !['weekday_pm', 'weekend_pm', 'full_day'].includes(pt_shift_type)) {
+    return res.status(400).json({ error: 'PT 班別無效' });
+  }
+  
   db.run(`UPDATE employees 
-          SET name = ?, type = ?, role_primary = ?, skills = ?, emp_no = ?
+          SET name = ?, type = ?, pt_shift_type = ?, role_primary = ?, skills = ?, emp_no = ?
           WHERE id = ?`,
-    [name, type, role_primary, JSON.stringify(skills || []), emp_no, employeeId],
+    [name, type, pt_shift_type, role_primary, JSON.stringify(skills || []), emp_no, employeeId],
     function(err) {
       if (err) {
         console.error('更新員工資料庫錯誤:', err.message);

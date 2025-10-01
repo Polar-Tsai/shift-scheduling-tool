@@ -21,6 +21,24 @@ class RulesEngine {
                     regularHours: 8 // 正常工時
                 }
             },
+            // PT 班別：限制可以被指派的時段或日別
+            ptShiftTypes: {
+                weekday_pm: {
+                    description: '平日晚班（18:00 ~ 22:00）',
+                    allowedSlots: ['PM'],
+                    weekendOnly: false
+                },
+                weekend_pm: {
+                    description: '假日晚班（18:00 ~ 22:00）',
+                    allowedSlots: ['PM'],
+                    weekendOnly: true
+                },
+                full_day: {
+                    description: '全日（同正職工時）',
+                    allowedSlots: ['AM', 'PM'],
+                    weekendOnly: false
+                }
+            },
             
             // 休息時間
             breakTime: {
@@ -426,8 +444,38 @@ class RulesEngine {
 
     // 檢查員工是否可用
     isEmployeeAvailable(employee, shift, constraints) {
-        // 基本可用性檢查
-        return true; // 簡化實作
+        // 基本可用性：若有請假等約束可在 calculateEmployeeAvailability 已過濾
+
+        // 若為 PT，依照其 pt_shift_type 限制
+        if (employee.type === 'pt') {
+            const ptType = employee.pt_shift_type || employee.ptShiftType;
+            if (ptType && this.rules.ptShiftTypes[ptType]) {
+                const rule = this.rules.ptShiftTypes[ptType];
+
+                // 檢查允許的時段（AM/PM）
+                if (!rule.allowedSlots.includes(shift.slot)) {
+                    return false;
+                }
+
+                // 週末限定
+                if (rule.weekendOnly) {
+                    const d = new Date(shift.date);
+                    const day = d.getDay();
+                    const isWeekend = day === 0 || day === 6;
+                    if (!isWeekend) return false;
+                } else {
+                    // 若非週末限定，且是平日晚班限定，需避開週末
+                    if (ptType === 'weekday_pm') {
+                        const d = new Date(shift.date);
+                        const day = d.getDay();
+                        const isWeekend = day === 0 || day === 6;
+                        if (isWeekend) return false;
+                    }
+                }
+            }
+        }
+
+        return true;
     }
 
     // 計算員工分數
